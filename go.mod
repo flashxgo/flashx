@@ -1,3 +1,3 @@
-module github.com/Tak1za/flashx
+module github.com/flashxgo/flashx
 
 go 1.15
