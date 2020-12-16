@@ -4,11 +4,18 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+
+	"go.uber.org/ratelimit"
 )
 
 // Engine provides configuration options to setup and
 // use FlashX
 type Engine struct {
+	// NumberOfRequestsPerSecond states the
+	// maximum number of operations to perform per second
+	// If this value is not set, rate limiting will be disabled
+	NumberOfRequestsPerSecond int
+
 	// ModifyRequest allows you to modify the request before sending it
 	// It accepts a function that alters the request to be sent.
 	// Accepted function must not access the provided request after returning
@@ -22,10 +29,22 @@ type Engine struct {
 	// implementation is used.
 	// If not set, a default value will be picked up
 	ModifyResponse func(*http.Response) error
+
+	limiter ratelimit.Limiter
 }
 
 // Setup creates a reverse proxy for the configured URL
-func (e *Engine) Setup(url *url.URL, writer http.ResponseWriter, request *http.Request) error {
+func (e *Engine) Setup() {
+	if e.NumberOfRequestsPerSecond > 0 {
+		e.limiter = ratelimit.New(e.NumberOfRequestsPerSecond)
+	} else {
+		e.limiter = ratelimit.NewUnlimited()
+	}
+}
+
+// Initiate routes in the request and routes out the response
+func (e *Engine) Initiate(url *url.URL, writer http.ResponseWriter, request *http.Request) {
+	e.limiter.Take()
 	revProxy := httputil.NewSingleHostReverseProxy(url)
 	if e.ModifyRequest == nil {
 		e.ModifyRequest = defaultDirector(url)
@@ -38,7 +57,6 @@ func (e *Engine) Setup(url *url.URL, writer http.ResponseWriter, request *http.R
 	revProxy.ModifyResponse = e.ModifyResponse
 
 	revProxy.ServeHTTP(writer, request)
-	return nil
 }
 
 func parseURLs(urls string) (*url.URL, error) {
