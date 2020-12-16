@@ -10,8 +10,19 @@ import (
 // Engine provides configuration options to setup and
 // use FlashX
 type Engine struct {
-	URLs  []string
-	proxy *httputil.ReverseProxy
+	URLs []string
+
+	// ModifyRequest allows you to modify the request before sending it
+	// It accepts a function that alters the request to be sent.
+	// Accepted function must not access the provided request after returning
+	ModifyRequest func(*http.Request)
+
+	// ModifyResponse allows you to modify the response once it is received
+	// It accepts a function that alters the response before returning it
+	// If ModifyResponse returns an error, ErrorHandler is called
+	// with its error value. If ErrorHandler is nil, its default
+	// implementation is used.
+	ModifyResponse func(*http.Response) error
 }
 
 var (
@@ -25,25 +36,10 @@ func (e *Engine) Setup(url string, writer http.ResponseWriter, request *http.Req
 		return errMalformedURL
 	}
 	revProxy := httputil.NewSingleHostReverseProxy(endpoint)
-	e.proxy = revProxy
+	revProxy.Director = e.ModifyRequest
+	revProxy.ModifyResponse = e.ModifyResponse
 	revProxy.ServeHTTP(writer, request)
 	return nil
-}
-
-// ModifyRequest allows you to modify the request before sending it
-// It accepts a function that alters the request to be sent.
-// Accepted function must not access the provided request after returning
-func (e *Engine) ModifyRequest(modify func(h *http.Request)) {
-	e.proxy.Director = modify
-}
-
-// ModifyResponse allows you to modify the response once it is received
-// It accepts a function that alters the response before returning it
-// If ModifyResponse returns an error, ErrorHandler is called
-// with its error value. If ErrorHandler is nil, its default
-// implementation is used.
-func (e *Engine) ModifyResponse(modify func(*http.Response) error) {
-	e.proxy.ModifyResponse = modify
 }
 
 func parseURLs(urls string) (*url.URL, error) {
