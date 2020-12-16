@@ -86,21 +86,6 @@ func (e *Engine) Initiate(url *url.URL, writer http.ResponseWriter, request *htt
 	revProxy.ServeHTTP(writer, request)
 }
 
-func defaultDirector(url *url.URL) func(req *http.Request) {
-	return func(req *http.Request) {
-		req.URL.Host = url.Host
-		req.URL.Scheme = url.Scheme
-		req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
-		req.Host = url.Host
-	}
-}
-
-func defaultModifyResponse() func(*http.Response) error {
-	return func(h *http.Response) error {
-		return nil
-	}
-}
-
 func (e *Engine) setupReverseProxy(url *url.URL, revProxy *httputil.ReverseProxy) {
 	revProxy.BufferPool = e.BufferPool
 	revProxy.ErrorHandler = e.ErrorHandler
@@ -117,4 +102,19 @@ func (e *Engine) setupReverseProxy(url *url.URL, revProxy *httputil.ReverseProxy
 		e.ModifyResponse = defaultModifyResponse()
 	}
 	revProxy.ModifyResponse = e.ModifyResponse
+}
+
+func defaultDirector(url *url.URL) func(req *http.Request) {
+	return func(req *http.Request) {
+		req.URL.Host = url.Host
+		req.URL.Scheme = url.Scheme
+		req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
+		req.Host = url.Host
+	}
+}
+
+func defaultModifyResponse() func(*http.Response) error {
+	return func(h *http.Response) error {
+		return nil
+	}
 }
