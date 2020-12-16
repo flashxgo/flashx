@@ -26,6 +26,7 @@ func (e *Engine) Setup(url string, writer http.ResponseWriter, request *http.Req
 	}
 	revProxy := httputil.NewSingleHostReverseProxy(endpoint)
 	e.proxy = revProxy
+	return nil
 }
 
 // ModifyRequest allows you to modify the request before sending it
