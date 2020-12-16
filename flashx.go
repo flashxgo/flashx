@@ -1,7 +1,6 @@
 package flashx
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -10,8 +9,6 @@ import (
 // Engine provides configuration options to setup and
 // use FlashX
 type Engine struct {
-	URLs []string
-
 	// ModifyRequest allows you to modify the request before sending it
 	// It accepts a function that alters the request to be sent.
 	// Accepted function must not access the provided request after returning
@@ -26,10 +23,6 @@ type Engine struct {
 	// If not set, a default value will be picked up
 	ModifyResponse func(*http.Response) error
 }
-
-var (
-	errMalformedURL = errors.New("malformed url")
-)
 
 // Setup creates a reverse proxy for the configured URL
 func (e *Engine) Setup(url *url.URL, writer http.ResponseWriter, request *http.Request) error {
