@@ -13,6 +13,9 @@ import (
 // Engine provides configuration options to setup and
 // use FlashX
 type Engine struct {
+	// BlacklistIPs is an array of IPs that needs to be blacklisted
+	BlacklistIPs []string
+
 	// A BufferPool is an interface for getting and returning temporary
 	// byte slices for use by io.CopyBuffer.
 	BufferPool httputil.BufferPool
@@ -80,10 +83,23 @@ func (e *Engine) Setup() {
 func (e *Engine) Initiate(url *url.URL, writer http.ResponseWriter, request *http.Request) {
 	e.limiter.Take()
 
+	e.blacklist(writer, request)
+
 	revProxy := httputil.NewSingleHostReverseProxy(url)
 	e.setupReverseProxy(url, revProxy)
 
 	revProxy.ServeHTTP(writer, request)
+}
+
+func (e *Engine) blacklist(writer http.ResponseWriter, request *http.Request) {
+	if len(e.BlacklistIPs) > 0 {
+		for _, ip := range e.BlacklistIPs {
+			if ip == request.RemoteAddr {
+				writer.WriteHeader(http.StatusForbidden)
+				return
+			}
+		}
+	}
 }
 
 func (e *Engine) setupReverseProxy(url *url.URL, revProxy *httputil.ReverseProxy) {
