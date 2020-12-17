@@ -164,10 +164,14 @@ func (e *Engine) setupReverseProxy(url *url.URL) {
 
 	if e.ModifyRequest == nil {
 		e.proxy.Director = defaultDirector(url)
+	} else {
+		e.proxy.Director = e.ModifyRequest
 	}
 
 	if e.ModifyResponse == nil {
 		e.proxy.ModifyResponse = defaultModifyResponse()
+	} else {
+		e.proxy.ModifyResponse = e.ModifyResponse
 	}
 }
 
