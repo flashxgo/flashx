@@ -44,11 +44,6 @@ type Engine struct {
 	// immediately.
 	FlushInterval time.Duration
 
-	// NumberOfRequestsPerSecond states the
-	// maximum number of operations to perform per second
-	// If this value is not set, rate limiting will be disabled
-	NumberOfRequestsPerSecond int
-
 	// ModifyRequest allows you to modify the request before sending it
 	// It accepts a function that alters the request to be sent.
 	// Accepted function must not access the provided request after returning
@@ -63,11 +58,18 @@ type Engine struct {
 	// If not set, a default value will be picked up
 	ModifyResponse func(*http.Response) error
 
+	// NumberOfRequestsPerSecond states the
+	// maximum number of operations to perform per second
+	// If this value is not set, rate limiting will be disabled
+	NumberOfRequestsPerSecond int
+
 	// The transport used to perform proxy requests.
 	// If nil, http.DefaultTransport is used.
 	Transport http.RoundTripper
 
 	limiter ratelimit.Limiter
+
+	proxy *httputil.ReverseProxy
 }
 
 // Setup creates a reverse proxy for the configured URL
@@ -86,7 +88,8 @@ func (e *Engine) Initiate(url *url.URL, writer http.ResponseWriter, request *htt
 	e.blacklist(writer, request)
 
 	revProxy := httputil.NewSingleHostReverseProxy(url)
-	e.setupReverseProxy(url, revProxy)
+	e.proxy = revProxy
+	e.setupReverseProxy(url)
 
 	revProxy.ServeHTTP(writer, request)
 }
@@ -102,29 +105,28 @@ func (e *Engine) blacklist(writer http.ResponseWriter, request *http.Request) {
 	}
 }
 
-func (e *Engine) setupReverseProxy(url *url.URL, revProxy *httputil.ReverseProxy) {
-	revProxy.BufferPool = e.BufferPool
-	revProxy.ErrorHandler = e.ErrorHandler
-	revProxy.ErrorLog = e.ErrorLog
-	revProxy.FlushInterval = e.FlushInterval
-	revProxy.Transport = e.Transport
+func (e *Engine) setupReverseProxy(url *url.URL) {
+	e.proxy.BufferPool = e.BufferPool
+	e.proxy.ErrorHandler = e.ErrorHandler
+	e.proxy.ErrorLog = e.ErrorLog
+	e.proxy.FlushInterval = e.FlushInterval
+	e.proxy.Transport = e.Transport
 
 	if e.ModifyRequest == nil {
 		e.ModifyRequest = defaultDirector(url)
 	}
-	revProxy.Director = e.ModifyRequest
+	e.proxy.Director = e.ModifyRequest
 
 	if e.ModifyResponse == nil {
 		e.ModifyResponse = defaultModifyResponse()
 	}
-	revProxy.ModifyResponse = e.ModifyResponse
+	e.proxy.ModifyResponse = e.ModifyResponse
 }
 
 func defaultDirector(url *url.URL) func(req *http.Request) {
 	return func(req *http.Request) {
 		req.URL.Host = url.Host
 		req.URL.Scheme = url.Scheme
-		req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
 		req.Host = url.Host
 	}
 }
