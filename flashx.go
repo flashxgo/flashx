@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/ratelimit"
@@ -67,31 +68,80 @@ type Engine struct {
 	// If nil, http.DefaultTransport is used.
 	Transport http.RoundTripper
 
+	// URLs is an array of string URLs that need to be configured
+	URLs []string
+
+	// LoadBalancingStrategy holds a load balancing strategy
+	LoadBalancingStrategy int
+
 	limiter ratelimit.Limiter
 
 	proxy *httputil.ReverseProxy
+
+	currentIndex uint64
+
+	urls []*url.URL
 }
 
+const (
+	// Nil or no strategy
+	Nil int = iota
+
+	// RoundRobin strategy
+	RoundRobin
+)
+
 // Setup creates a reverse proxy for the configured URL
-func (e *Engine) Setup() {
+func (e *Engine) Setup() error {
 	if e.NumberOfRequestsPerSecond > 0 {
 		e.limiter = ratelimit.New(e.NumberOfRequestsPerSecond)
 	} else {
 		e.limiter = ratelimit.NewUnlimited()
 	}
+
+	if err := e.validateURLs(); err != nil {
+		return err
+	}
+	return nil
 }
 
-// Initiate routes in the request and routes out the response
-func (e *Engine) Initiate(url *url.URL, writer http.ResponseWriter, request *http.Request) {
+// Initiate routes in the request,
+// and routes out the response for a particular URL.
+// The function accepts a response writer,
+// a pointer to a request
+func (e *Engine) Initiate(writer http.ResponseWriter, request *http.Request) {
+	routeURL := e.getURL()
+
 	e.limiter.Take()
 
 	e.blacklist(writer, request)
 
-	revProxy := httputil.NewSingleHostReverseProxy(url)
+	revProxy := httputil.NewSingleHostReverseProxy(routeURL)
 	e.proxy = revProxy
-	e.setupReverseProxy(url)
+	e.setupReverseProxy(routeURL)
 
 	revProxy.ServeHTTP(writer, request)
+}
+
+func (e *Engine) validateURLs() error {
+	parsedURLs := make([]*url.URL, 0)
+	for _, value := range e.URLs {
+		parsedURL, err := url.Parse(value)
+		if err != nil {
+			return err
+		}
+		parsedURLs = append(parsedURLs, parsedURL)
+	}
+	e.urls = parsedURLs
+	return nil
+}
+
+func (e *Engine) getURL() *url.URL {
+	if e.LoadBalancingStrategy == RoundRobin {
+		nextURLIndex := int(atomic.AddUint64(&e.currentIndex, uint64(1)) % uint64(len(e.urls)))
+		return e.urls[nextURLIndex]
+	}
+	return e.urls[0]
 }
 
 func (e *Engine) blacklist(writer http.ResponseWriter, request *http.Request) {
@@ -113,14 +163,12 @@ func (e *Engine) setupReverseProxy(url *url.URL) {
 	e.proxy.Transport = e.Transport
 
 	if e.ModifyRequest == nil {
-		e.ModifyRequest = defaultDirector(url)
+		e.proxy.Director = defaultDirector(url)
 	}
-	e.proxy.Director = e.ModifyRequest
 
 	if e.ModifyResponse == nil {
-		e.ModifyResponse = defaultModifyResponse()
+		e.proxy.ModifyResponse = defaultModifyResponse()
 	}
-	e.proxy.ModifyResponse = e.ModifyResponse
 }
 
 func defaultDirector(url *url.URL) func(req *http.Request) {
