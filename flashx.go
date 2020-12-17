@@ -88,6 +88,8 @@ const (
 	Nil int = iota
 
 	// RoundRobin strategy
+	// In this strategy, URLs will be picked
+	// from the URL array one after the other
 	RoundRobin
 )
 
