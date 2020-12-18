@@ -11,3 +11,7 @@ It supports the following features:
 - Blacklist IPs
 - Rate Limiting (requests per second)
 - Modify Request and Response
+- Buffer Pool
+- Custom Error Handler
+- Custom Logger
+- Flush Interval
