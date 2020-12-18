@@ -4,6 +4,7 @@ FlashX provides a Go package that helps easily setup a reverse proxy for your se
 
 It supports the following features:
 - Reverse Proxy
+- Reverse Proxy based on custom logic
 - Load Balancing
   - Round Robin
   - Weighted Round Robin

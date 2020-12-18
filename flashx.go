@@ -137,6 +137,26 @@ func (e *Engine) Initiate(writer http.ResponseWriter, request *http.Request) {
 	revProxy.ServeHTTP(writer, request)
 }
 
+// InitiateOverride routes in the requst,
+// and routes out the response for a particular URL.
+// The function accepts a response writer,
+// a pointer to a request,
+// and the override URl which will be used
+// instead of the URL array initiated in the Engine
+// Use this method if you want to use a custom logic
+// to decide which URL to route to.
+func (e *Engine) InitiateOverride(writer http.ResponseWriter, request *http.Request, routeURL *url.URL) {
+	e.limiter.Take()
+
+	e.blacklist(writer, request)
+
+	revProxy := httputil.NewSingleHostReverseProxy(routeURL)
+	e.proxy = revProxy
+	e.setupReverseProxy(routeURL)
+
+	revProxy.ServeHTTP(writer, request)
+}
+
 func (e *Engine) validateURLs() error {
 	parsedURLs := make([]*url.URL, 0)
 	for _, value := range e.URLs {
