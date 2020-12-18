@@ -74,13 +74,18 @@ type Engine struct {
 	// LoadBalancingStrategy holds a load balancing strategy
 	LoadBalancingStrategy int
 
+	// RoundRobinWeights holds the weights specified for each URL
+	RoundRobinWeights []int
+
 	limiter ratelimit.Limiter
 
 	proxy *httputil.ReverseProxy
 
-	currentIndex uint64
+	currentIndex int64
 
 	urls []*url.URL
+
+	weightedURLs []*url.URL
 }
 
 const (
@@ -91,10 +96,17 @@ const (
 	// In this strategy, URLs will be picked
 	// from the URL array one after the other
 	RoundRobin
+
+	// WeightedRoundRobin strategy
+	// In this strategy, URLs will be picked from
+	// the URL array one by one based on the weights specified
+	// By default, weights will be equal to 1 for each URL
+	WeightedRoundRobin
 )
 
 // Setup creates a reverse proxy for the configured URL
 func (e *Engine) Setup() error {
+	e.currentIndex = -1
 	if e.NumberOfRequestsPerSecond > 0 {
 		e.limiter = ratelimit.New(e.NumberOfRequestsPerSecond)
 	} else {
@@ -135,13 +147,27 @@ func (e *Engine) validateURLs() error {
 		parsedURLs = append(parsedURLs, parsedURL)
 	}
 	e.urls = parsedURLs
+
+	if len(e.RoundRobinWeights) > 0 {
+		e.weightedURLs = make([]*url.URL, 0)
+		for index, i := range e.urls {
+			weight := e.RoundRobinWeights[index]
+			for j := 0; j < weight; j++ {
+				e.weightedURLs = append(e.weightedURLs, i)
+			}
+		}
+	}
 	return nil
 }
 
 func (e *Engine) getURL() *url.URL {
 	if e.LoadBalancingStrategy == RoundRobin {
-		nextURLIndex := int(atomic.AddUint64(&e.currentIndex, uint64(1)) % uint64(len(e.urls)))
+		nextURLIndex := int(atomic.AddInt64(&e.currentIndex, int64(1)) % int64(len(e.urls)))
 		return e.urls[nextURLIndex]
+	}
+	if e.LoadBalancingStrategy == WeightedRoundRobin {
+		nextURLIndex := int(atomic.AddInt64(&e.currentIndex, int64(1)) % int64(len(e.weightedURLs)))
+		return e.weightedURLs[nextURLIndex]
 	}
 	return e.urls[0]
 }
