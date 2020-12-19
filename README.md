@@ -19,4 +19,4 @@ It supports the following features:
 - Custom Logger
 - Flush Interval
 
-Take a look at some [examples](https://github.com/flashxgo/examples) on how to use this package.
+Take a look at some <a href="https://github.com/flashxgo/examples" target="_blank">examples</a> on how to use this package.
