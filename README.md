@@ -9,8 +9,8 @@ It supports the following features:
   - Round Robin
   - Weighted Round Robin
   - Least Connections
-  - TODO: Weighted Least Connections
-  - TODO: Weighted Response Time
+  - *TODO: Weighted Least Connections*
+  - *TODO: Weighted Response Time*
 - Blacklist IPs
 - Rate Limiting (requests per second)
 - Modify Request and Response
