@@ -18,3 +18,5 @@ It supports the following features:
 - Custom Error Handler
 - Custom Logger
 - Flush Interval
+
+Take a look at some [examples](https://github.com/flashxgo/examples) on how to use this package.
