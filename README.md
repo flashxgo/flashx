@@ -8,6 +8,7 @@ It supports the following features:
 - Load Balancing
   - Round Robin
   - Weighted Round Robin
+  - Least Connections
 - Blacklist IPs
 - Rate Limiting (requests per second)
 - Modify Request and Response
