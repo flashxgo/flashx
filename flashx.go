@@ -5,11 +5,14 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"go.uber.org/ratelimit"
 )
+
+var l = &sync.Mutex{}
 
 // Engine provides configuration options to setup and
 // use FlashX
@@ -86,6 +89,8 @@ type Engine struct {
 	urls []*url.URL
 
 	weightedURLs []*url.URL
+
+	leastConnectionMap map[*url.URL]int
 }
 
 const (
@@ -102,6 +107,14 @@ const (
 	// the URL array one by one based on the weights specified
 	// By default, weights will be equal to 1 for each URL
 	WeightedRoundRobin
+
+	// LeastConnections strategy
+	// In this strategy, URLs will be picked from
+	// the URL array one by one based on number of
+	// active connections.
+	// The one with the least number of active
+	// connections will receive the request
+	LeastConnections
 )
 
 // Setup creates a reverse proxy for the configured URL
@@ -116,6 +129,11 @@ func (e *Engine) Setup() error {
 	if err := e.validateURLs(); err != nil {
 		return err
 	}
+
+	if e.LoadBalancingStrategy == LeastConnections {
+		e.populateLeastConnectionsMap()
+	}
+
 	return nil
 }
 
@@ -128,6 +146,10 @@ func (e *Engine) Initiate(writer http.ResponseWriter, request *http.Request) {
 
 	e.limiter.Take()
 
+	l.Lock()
+	e.leastConnectionMap[routeURL]++
+	l.Unlock()
+
 	e.blacklist(writer, request)
 
 	revProxy := httputil.NewSingleHostReverseProxy(routeURL)
@@ -135,6 +157,10 @@ func (e *Engine) Initiate(writer http.ResponseWriter, request *http.Request) {
 	e.setupReverseProxy(routeURL)
 
 	revProxy.ServeHTTP(writer, request)
+
+	l.Lock()
+	e.leastConnectionMap[routeURL]--
+	l.Unlock()
 }
 
 // InitiateOverride routes in the requst,
@@ -180,6 +206,13 @@ func (e *Engine) validateURLs() error {
 	return nil
 }
 
+func (e *Engine) populateLeastConnectionsMap() {
+	e.leastConnectionMap = make(map[*url.URL]int)
+	for _, v := range e.urls {
+		e.leastConnectionMap[v] = 0
+	}
+}
+
 func (e *Engine) getURL() *url.URL {
 	if e.LoadBalancingStrategy == RoundRobin {
 		nextURLIndex := int(atomic.AddInt64(&e.currentIndex, int64(1)) % int64(len(e.urls)))
@@ -188,6 +221,20 @@ func (e *Engine) getURL() *url.URL {
 	if e.LoadBalancingStrategy == WeightedRoundRobin {
 		nextURLIndex := int(atomic.AddInt64(&e.currentIndex, int64(1)) % int64(len(e.weightedURLs)))
 		return e.weightedURLs[nextURLIndex]
+	}
+
+	if e.LoadBalancingStrategy == LeastConnections {
+		l.Lock()
+		leastConnections := 9999999999
+		leastConnectionsURL := e.urls[0]
+		for k, v := range e.leastConnectionMap {
+			if v < leastConnections {
+				leastConnections = v
+				leastConnectionsURL = k
+			}
+		}
+		l.Unlock()
+		return leastConnectionsURL
 	}
 	return e.urls[0]
 }
