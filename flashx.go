@@ -1,6 +1,7 @@
 package flashx
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -12,7 +13,11 @@ import (
 	"go.uber.org/ratelimit"
 )
 
-var l = &sync.Mutex{}
+var (
+	l                                        = &sync.Mutex{}
+	errEmptyURLArrayWithLoadBalancer         = errors.New("URL array needs to filled if a load balancing strategy is being used")
+	errMismatchArrayLengthWeightedRoundRobin = errors.New("In case of Weighted Round Robin load balancing strategy, URLs array and Round Robin Weights array should have an equal length")
+)
 
 // Engine provides configuration options to setup and
 // use FlashX
@@ -130,8 +135,19 @@ func (e *Engine) Setup() error {
 		return err
 	}
 
+	if e.LoadBalancingStrategy != Nil && len(e.URLs) <= 0 {
+		return errEmptyURLArrayWithLoadBalancer
+	}
+
 	if e.LoadBalancingStrategy == LeastConnections {
 		e.populateLeastConnectionsMap()
+	}
+
+	if e.LoadBalancingStrategy == WeightedRoundRobin {
+		if len(e.RoundRobinWeights) != len(e.URLs) {
+			return errMismatchArrayLengthWeightedRoundRobin
+		}
+		e.populateWeightedRoundRobinURLs()
 	}
 
 	return nil
@@ -146,9 +162,11 @@ func (e *Engine) Initiate(writer http.ResponseWriter, request *http.Request) {
 
 	e.limiter.Take()
 
-	l.Lock()
-	e.leastConnectionMap[routeURL]++
-	l.Unlock()
+	if e.LoadBalancingStrategy == LeastConnections {
+		l.Lock()
+		e.leastConnectionMap[routeURL]++
+		l.Unlock()
+	}
 
 	e.blacklist(writer, request)
 
@@ -158,9 +176,11 @@ func (e *Engine) Initiate(writer http.ResponseWriter, request *http.Request) {
 
 	revProxy.ServeHTTP(writer, request)
 
-	l.Lock()
-	e.leastConnectionMap[routeURL]--
-	l.Unlock()
+	if e.LoadBalancingStrategy == LeastConnections {
+		l.Lock()
+		e.leastConnectionMap[routeURL]--
+		l.Unlock()
+	}
 }
 
 // InitiateOverride routes in the requst,
@@ -193,7 +213,10 @@ func (e *Engine) validateURLs() error {
 		parsedURLs = append(parsedURLs, parsedURL)
 	}
 	e.urls = parsedURLs
+	return nil
+}
 
+func (e *Engine) populateWeightedRoundRobinURLs() {
 	if len(e.RoundRobinWeights) > 0 {
 		e.weightedURLs = make([]*url.URL, 0)
 		for index, i := range e.urls {
@@ -203,7 +226,6 @@ func (e *Engine) validateURLs() error {
 			}
 		}
 	}
-	return nil
 }
 
 func (e *Engine) populateLeastConnectionsMap() {
